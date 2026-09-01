@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gear-Pair Design Advisor</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #ffffff;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --border:         rgba(11,11,11,0.10);
+    --accent:         #2a78d6;
+    --accent-dark:    #184f95;
+    --accent-wash:    #eaf1fb;
+    --good:           #0ca30c;
+    --good-wash:      #e6f6e6;
+    --critical:       #d03b3b;
+    --critical-wash:  #fceded;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell { max-width: 880px; margin: 0 auto; padding: 32px 20px 64px; }
+
+  /* ---------- Header ---------- */
+  header.app-header { margin-bottom: 24px; }
+  .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  .subtitle { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+  .mode-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--accent-wash); color: var(--accent-dark);
+    font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid rgba(42,120,214,0.25);
+  }
+  .mode-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  /* ---------- Tabs ---------- */
+  nav.tabs {
+    display: flex; gap: 4px; border-bottom: 1px solid var(--gridline);
+    margin-bottom: 24px;
+  }
+  nav.tabs button {
+    appearance: none; background: none; border: none; cursor: pointer;
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--text-muted);
+    padding: 10px 4px; margin-right: 20px; position: relative;
+    border-bottom: 2px solid transparent;
+  }
+  nav.tabs button.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+  nav.tabs button:disabled { color: #c3c2b7; cursor: not-allowed; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ---------- Cards ---------- */
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 22px 24px; margin-bottom: 18px;
+  }
+  .card h2 { font-size: 15px; font-weight: 700; margin: 0 0 4px; }
+  .card .hint { color: var(--text-muted); font-size: 13px; margin: 0 0 18px; }
+
+  /* ---------- Form ---------- */
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+  .field input {
+    font: inherit; font-size: 14px; padding: 9px 11px;
+    border: 1px solid var(--gridline); border-radius: 8px; background: #fff;
+    color: var(--text-primary);
+  }
+  .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  .field .unit { color: var(--text-muted); font-size: 12px; }
+
+  .btn {
+    appearance: none; border: none; cursor: pointer; font: inherit; font-weight: 700;
+    font-size: 14px; padding: 11px 20px; border-radius: 8px;
+    background: var(--accent); color: #fff; transition: background 0.15s;
+  }
+  .btn:hover { background: var(--accent-dark); }
+  .btn:disabled { background: #c3c2b7; cursor: not-allowed; }
+  .btn.secondary { background: var(--accent-wash); color: var(--accent-dark); }
+  .btn.secondary:hover { background: #dbe8f9; }
+  .btn.approve { background: var(--good); }
+  .btn.approve:hover { background: #087d08; }
+  .btn.reject { background: var(--critical); }
+  .btn.reject:hover { background: #a92e2e; }
+  .btn-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+
+  .settings-toggle {
+    background: none; border: none; cursor: pointer; color: var(--text-muted);
+    font: inherit; font-size: 12px; text-decoration: underline; padding: 0; margin-top: 14px;
+  }
+  .settings-box { margin-top: 12px; padding: 14px; background: var(--page); border-radius: 8px; display: none; }
+  .settings-box.open { display: block; }
+  .settings-box label { font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px; }
+  .settings-box input { width: 100%; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--gridline); border-radius: 6px; }
+  .settings-box .field-pair { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .settings-box .field-pair:last-of-type { margin-bottom: 0; }
+  .settings-box .note { font-size: 12px; color: var(--text-muted); margin-top: 8px; margin-bottom: 0; }
+
+  /* ---------- Progress (running) ---------- */
+  .progress-steps { list-style: none; margin: 0; padding: 0; }
+  .progress-steps li {
+    display: flex; align-items: center; gap: 10px; padding: 9px 0;
+    font-size: 14px; color: var(--text-muted);
+  }
+  .progress-steps li .marker {
+    width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--gridline);
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  }
+  .progress-steps li.done { color: var(--text-primary); }
+  .progress-steps li.done .marker { background: var(--good); border-color: var(--good); }
+  .progress-steps li.done .marker::after { content: "✓"; color: #fff; font-size: 11px; font-weight: 700; }
+  .progress-steps li.active { color: var(--text-primary); font-weight: 600; }
+  .progress-steps li.active .marker { border-color: var(--accent); }
+  .progress-steps li.active .marker::after {
+    content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    animation: pulse 1s infinite ease-in-out;
+  }
+  @keyframes pulse { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .progress-steps li.active .marker::after { animation: none; }
+  }
+
+  /* ---------- Result ---------- */
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700;
+    padding: 5px 12px; border-radius: 999px;
+  }
+  .status-badge.pass { background: var(--good-wash); color: #096b09; }
+  .status-badge.fail { background: var(--critical-wash); color: #a92e2e; }
+  .status-badge.pending { background: var(--accent-wash); color: var(--accent-dark); }
+  .status-badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status-badge.pass .dot { background: var(--good); }
+  .status-badge.fail .dot { background: var(--critical); }
+  .status-badge.pending .dot { background: var(--accent); }
+
+  .result-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
+  .result-header h2 { margin: 0; }
+  .badge-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .baseline-note { font-size: 13px; color: var(--text-secondary); margin: 0 0 18px; }
+  .baseline-note b { color: var(--text-primary); }
+
+  .param-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+  .param-tile { background: var(--page); border-radius: 8px; padding: 12px 14px; }
+  .param-tile .label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
+  .param-tile .value { font-size: 18px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  .meter-block { margin-bottom: 14px; }
+  .meter-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .meter-top .name { font-size: 13px; font-weight: 600; }
+  .meter-top .figs { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .meter-track { position: relative; height: 8px; background: var(--gridline); border-radius: 4px; overflow: visible; }
+  .meter-fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 4px; }
+  .meter-fill.good { background: var(--good); }
+  .meter-fill.critical { background: var(--critical); }
+  .meter-target { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--text-primary); opacity: 0.35; }
+
+  .reasoning-box {
+    background: var(--page); border-radius: 8px; padding: 14px 16px; font-size: 13.5px;
+    line-height: 1.55; color: var(--text-secondary); margin-bottom: 8px;
+  }
+  .reasoning-box b { color: var(--text-primary); }
+
+  details.trace { margin-top: 8px; }
+  details.trace summary {
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent-dark);
+    padding: 6px 0;
+  }
+  .trace-item {
+    display: flex; gap: 10px; font-size: 13px; padding: 8px 0; border-top: 1px solid var(--gridline);
+  }
+  .trace-item .n {
+    flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-wash);
+    color: var(--accent-dark); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  }
+  .trace-item .txt { color: var(--text-secondary); }
+
+  .action-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+  .action-row a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+
+  /* ---------- Report: section headings ---------- */
+  .report-section { margin-top: 22px; }
+  .report-section .section-title {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); margin: 0 0 10px;
+  }
+
+  /* ---------- Report: similarity note ---------- */
+  .similarity-note {
+    display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-secondary);
+    background: var(--accent-wash); border-radius: 8px; padding: 10px 14px; margin: 8px 0 4px;
+  }
+  .similarity-note .sim-item b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+  /* ---------- Report: decision trail (timeline) ---------- */
+  .decision-trail { position: relative; margin: 4px 0 0; padding-left: 30px; }
+  .trail-step { position: relative; padding-bottom: 20px; }
+  .trail-step:last-child { padding-bottom: 0; }
+  .trail-step::before {
+    /* connecting line */
+    content: ""; position: absolute; left: -20px; top: 22px; bottom: -4px; width: 2px;
+    background: var(--gridline);
+  }
+  .trail-step:last-child::before { display: none; }
+  .trail-step .trail-dot {
+    position: absolute; left: -30px; top: 0; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent-wash); color: var(--accent-dark); font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; border: 1px solid rgba(42,120,214,0.25);
+  }
+  .trail-step.is-start .trail-dot { background: var(--page); color: var(--text-secondary); border-color: var(--gridline); }
+  .trail-step.is-final .trail-dot { background: var(--good-wash); color: #096b09; border-color: rgba(12,163,12,0.3); }
+  .trail-step .trail-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); margin-bottom: 2px; }
+  .trail-step.is-final .trail-label { color: #096b09; }
+  .trail-step .trail-text { font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; }
+  .trail-step .trail-text b { color: var(--text-primary); }
+
+  /* ---------- Report: compare table ---------- */
+  .compare-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  .compare-table th, .compare-table td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--gridline); }
+  .compare-table th { color: var(--text-muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.02em; }
+  .compare-table td { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .compare-table td.row-label { color: var(--text-primary); font-weight: 600; font-variant-numeric: initial; }
+  .compare-table td.changed { color: var(--accent-dark); font-weight: 700; }
+  .compare-table td.na { color: var(--text-muted); font-style: italic; }
+
+  /* ---------- Report: thread note + tweaks ---------- */
+  .thread-note { font-size: 12.5px; color: var(--text-muted); margin: 0 0 6px; }
+  .thread-link { color: var(--accent-dark); font-weight: 600; text-decoration: none; }
+  .thread-link:hover { text-decoration: underline; }
+  .tweak-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tweak-btn { font-size: 13px; padding: 9px 14px; }
+
+  @media print {
+    body * { visibility: hidden; }
+    #resultCard, #resultCard * { visibility: visible; }
+    #resultCard { position: absolute; left: 0; top: 0; width: 100%; border: none; padding: 0; }
+    .decision-block, .no-print { display: none !important; }
+  }
+
+  /* ---------- Decision block ---------- */
+  .decision-block { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--gridline); }
+  .decision-block .decision-heading { font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px; }
+  .decision-block .decision-hint { font-size: 13px; color: var(--text-secondary); margin: 0 0 14px; }
+  .decision-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .decision-row .btn { min-width: 130px; }
+  .decision-outcome {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary);
+  }
+  .decision-outcome .icon { font-weight: 700; }
+  .decision-outcome.is-approved .icon { color: var(--good); }
+  .decision-outcome.is-rejected .icon { color: var(--critical); }
+
+  /* ---------- History ---------- */
+  .history-row {
+    display: grid; grid-template-columns: 22px 84px 1fr auto auto auto; gap: 12px; align-items: center;
+    padding: 14px 4px; border-top: 1px solid var(--gridline); font-size: 13.5px;
+  }
+  .history-row .compare-check { width: 16px; height: 16px; cursor: pointer; }
+  .history-row:first-of-type { border-top: none; }
+  .history-row .date { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .history-row .summary b { color: var(--text-primary); }
+  .history-row .summary { color: var(--text-secondary); }
+  .history-row .links a { color: var(--accent-dark); text-decoration: none; font-size: 12.5px; font-weight: 600; margin-right: 12px; }
+  .history-row .links a:hover { text-decoration: underline; }
+  .history-row .status-badge { font-size: 11px; padding: 3px 9px; white-space: nowrap; }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 14px; }
+  #compareArea:not(:empty) { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--gridline); }
+
+  .disclaimer {
+    font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 28px; line-height: 1.6;
+  }
+
+  @media (max-width: 620px) {
+    .param-grid { grid-template-columns: repeat(2, 1fr); }
+    .history-row { grid-template-columns: 22px 1fr; row-gap: 6px; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="app-header">
+    <div class="title-row">
+      <h1>AI Gear-Pair Design Advisor</h1>
+      <span class="mode-pill" id="modePill"><span class="dot"></span>Live workflow</span>
+      <button class="settings-toggle" id="demoToggleBtn" style="margin-top:0;">Switch to demo mode</button>
+    </div>
+    <p class="subtitle">Enter a requirement, review the AI's recommended design, and approve or reject it — this page is the only place you need to work. Every decision updates the historical database automatically.</p>
+    <button class="settings-toggle" id="helpToggle" style="margin-top:6px;">What do GP_ID, ratio, and safety factor mean?</button>
+    <div class="settings-box" id="helpBox">
+      <p class="note" style="margin:0 0 8px;"><b>GP_ID</b> — the identifier assigned to a generated design once it's on record (GP01, GP02, ...). Approved designs become future baselines for the matcher.</p>
+      <p class="note" style="margin:0 0 8px;"><b>Ratio</b> — driven/driving tooth count (Zg / Zp). <b>Root safety factor</b> — margin against tooth-bending failure (Lewis equation). <b>Flank safety factor</b> — margin against surface pitting (Hertz contact stress). Both must clear your target for the design to pass.</p>
+      <p class="note" style="margin:0;">A result tagged <b>Simulated</b> came from the local demo calculator, not the live workflow — treat it as an example, never as a vetted design.</p>
+    </div>
+    <div class="settings-box" id="liveFailBanner" style="border:1px solid rgba(208,59,59,0.3); background:var(--critical-wash); display:none;"></div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="new">New Design</button>
+    <button class="tab-btn" data-tab="result" id="resultTabBtn" disabled>Result</button>
+    <button class="tab-btn" data-tab="history">History</button>
+  </nav>
+
+  <!-- ================= NEW DESIGN ================= -->
+  <section class="view active" id="view-new">
+    <div class="card">
+      <h2>New requirement</h2>
+      <p class="hint">Describe the gear pair you need. The agent will find the closest past design, calculate it, and iterate until it's safe.</p>
+
+      <div class="field-grid">
+        <div class="field">
+          <label for="in-ratio">Desired gear ratio</label>
+          <input type="number" id="in-ratio" step="0.1" value="2.2">
+        </div>
+        <div class="field">
+          <label for="in-torque">Input torque <span class="unit">(Nm)</span></label>
+          <input type="number" id="in-torque" step="1" value="55">
+        </div>
+        <div class="field">
+          <label for="in-rootsf">Minimum root safety factor</label>
+          <input type="number" id="in-rootsf" step="0.05" value="1.2">
+        </div>
+        <div class="field">
+          <label for="in-flanksf">Minimum flank safety factor</label>
+          <input type="number" id="in-flanksf" step="0.05" value="1.1">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="generateBtn">Generate Design</button>
+      </div>
+
+      <button class="settings-toggle" id="settingsToggle">Advanced: n8n workflow connection</button>
+      <div class="settings-box" id="settingsBox">
+        <div class="field-pair">
+          <label for="webhook-url">Generate-design webhook URL</label>
+          <input type="text" id="webhook-url" placeholder="https://your-instance.app.n8n.cloud/webhook/gear-design" value="https://bl26ankita.app.n8n.cloud/webhook/generate-design">
+        </div>
+        <div class="field-pair">
+          <label for="decision-webhook-url">Approve/Reject webhook URL</label>
+          <input type="text" id="decision-webhook-url" placeholder="https://your-instance.app.n8n.cloud/webhook/gear-design-decision" value="https://bl26ankita.app.n8n.cloud/webhook/design-decision">
+        </div>
+        <p class="note">This page runs live against your n8n workflow by default. Clear both fields, or use "Switch to demo mode" above, for a local simulation. If a live call fails, you'll get a clear retry prompt — nothing is substituted automatically without your say-so.</p>
+      </div>
+    </div>
+
+    <div class="card" id="progressCard" style="display:none;">
+      <h2>Running…</h2>
+      <ul class="progress-steps" id="progressSteps">
+        <li data-step="0"><span class="marker"></span>Looking up similar past designs</li>
+        <li data-step="1"><span class="marker"></span>AI selecting closest baseline</li>
+        <li data-step="2"><span class="marker"></span>Calculating safety factors</li>
+        <li data-step="3"><span class="marker"></span>AI reviewing the result</li>
+        <li data-step="4"><span class="marker"></span>Finalizing recommendation</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= RESULT ================= -->
+  <section class="view" id="view-result">
+    <div class="card" id="resultCard"></div>
+  </section>
+
+  <!-- ================= HISTORY ================= -->
+  <section class="view" id="view-history">
+    <div class="card">
+      <div class="result-header">
+        <h2>Past runs</h2>
+        <button class="btn secondary" id="compareBtn" disabled>Compare selected</button>
+      </div>
+      <p class="hint">Every finished design is saved as Pending, then Approved or Rejected right here — the sheet is never edited by hand. Saved locally in this browser, and check up to 3 rows to compare them side by side.</p>
+      <div id="historyList"></div>
+      <div id="compareArea"></div>
+    </div>
+  </section>
+
+  <p class="disclaimer">Runs live against the connected n8n workflow by default. Demo mode simulates the pipeline locally using the real Lewis/Hertz<br>calculations and sample historical data — only ever used when you choose it.</p>
+
+</div>
+
+<script>
+/* ============ Historical dataset (mirrors the Google Sheet) ============ */
+const HISTORICAL = [
+  {GP_ID:"GP01",module:2,Zp:20,Zg:40,faceWidth:20,inputTorqueNm:50,ratio:2.0},
+  {GP_ID:"GP02",module:2.5,Zp:18,Zg:36,faceWidth:22,inputTorqueNm:60,ratio:2.0},
+  {GP_ID:"GP03",module:1.5,Zp:24,Zg:48,faceWidth:16,inputTorqueNm:35,ratio:2.0},
+  {GP_ID:"GP04",module:3,Zp:16,Zg:32,faceWidth:25,inputTorqueNm:70,ratio:2.0},
+  {GP_ID:"GP05",module:2,Zp:22,Zg:33,faceWidth:18,inputTorqueNm:45,ratio:1.5},
+  {GP_ID:"GP06",module:2.5,Zp:20,Zg:50,faceWidth:24,inputTorqueNm:65,ratio:2.5},
+  {GP_ID:"GP07",module:1.5,Zp:28,Zg:42,faceWidth:14,inputTorqueNm:30,ratio:1.5},
+  {GP_ID:"GP08",module:3.5,Zp:18,Zg:36,faceWidth:28,inputTorqueNm:80,ratio:2.0},
+  {GP_ID:"GP09",module:2,Zp:25,Zg:40,faceWidth:20,inputTorqueNm:55,ratio:1.6},
+  {GP_ID:"GP10",module:3,Zp:20,Zg:60,faceWidth:26,inputTorqueNm:75,ratio:3.0},
+];
+let nextGpNumber = 11;
+
+/* ============ Real Lewis + Hertz calc (same formulas as the n8n Code node) ============ */
+const sigma_FP = 180.0, sigma_HP = 550.0, Zm = 270.0;
+function lewisY(Z) { return 0.484 - 2.87 / Z; }
+function calcSafety(module, Zp, Zg, faceWidth, inputTorqueNm) {
+  const d1 = module * Zp;
+  const ratio = Zg / Zp;
+  const Ft = (2000 * inputTorqueNm) / d1;
+  const Yp = lewisY(Zp), Yg = lewisY(Zg);
+  const sigF_p = Ft / (faceWidth * module * Yp);
+  const sigF_g = Ft / (faceWidth * module * Yg);
+  const rootSF_pinion = sigma_FP / sigF_p;
+  const rootSF_gear = sigma_FP / sigF_g;
+  const u = ratio;
+  const sigH = Zm * Math.sqrt((Ft * (u + 1)) / (faceWidth * d1 * u));
+  const flankSF = sigma_HP / sigH;
+  return {
+    Ft_N: round1(Ft), ratio: round3(ratio),
+    rootSF_pinion: round3(rootSF_pinion), rootSF_gear: round3(rootSF_gear), flankSF: round3(flankSF)
+  };
+}
+function round1(x){ return Math.round(x*10)/10; }
+function round3(x){ return Math.round(x*1000)/1000; }
+function findHistoricalById(id) { return HISTORICAL.find(g => g.GP_ID === id); }
+
+/* ============ Demo "agent" simulation ============ */
+function pickBaseline(req) {
+  let best = null, bestScore = Infinity;
+  for (const gp of HISTORICAL) {
+    const ratioDelta = Math.abs(gp.ratio - req.ratio) / req.ratio;
+    const torqueDelta = Math.abs(gp.inputTorqueNm - req.torque) / req.torque;
+    const score = ratioDelta * 0.6 + torqueDelta * 0.4;
+    if (score < bestScore) { bestScore = score; best = gp; }
+  }
+  return best;
+}
+
+function runDemoPipeline(req) {
+  const baseline = pickBaseline(req);
+  const trace = [];
+  let params = { module: baseline.module, Zp: baseline.Zp, Zg: baseline.Zg, faceWidth: baseline.faceWidth };
+  let iteration = 1;
+  let calc = calcSafety(params.module, params.Zp, params.Zg, params.faceWidth, req.torque);
+  let done = meetsTargets(calc, req);
+
+  trace.push({
+    n: iteration,
+    text: `Started from ${baseline.GP_ID} (module ${baseline.module}, Zp ${baseline.Zp}, Zg ${baseline.Zg}, face width ${baseline.faceWidth}mm) at the new torque of ${req.torque} Nm — ` +
+          `root SF ${Math.min(calc.rootSF_pinion, calc.rootSF_gear)}, flank SF ${calc.flankSF}.`
+  });
+
+  while (!done && iteration < 5) {
+    const limiting = worstFactor(calc, req);
+    const neededScale = limiting.target / limiting.value;
+    params = { ...params, faceWidth: round1(params.faceWidth * neededScale * 1.05) };
+    iteration += 1;
+    calc = calcSafety(params.module, params.Zp, params.Zg, params.faceWidth, req.torque);
+    done = meetsTargets(calc, req);
+    trace.push({
+      n: iteration,
+      text: `${limiting.name} was the limiting factor (${limiting.value} vs target ${limiting.target}) — increased face width to ${params.faceWidth}mm and recalculated. ` +
+            `New root SF ${Math.min(calc.rootSF_pinion, calc.rootSF_gear)}, flank SF ${calc.flankSF}.`
+    });
+  }
+
+  const gpId = "GP" + String(nextGpNumber++).padStart(2, "0");
+  return {
+    requirement: req,
+    baseline, params, calc, trace, done, iteration, gpId,
+    approvalStatus: "pending",
+    timestamp: new Date(),
+  };
+}
+
+function meetsTargets(calc, req) {
+  return calc.rootSF_pinion >= req.rootSFTarget && calc.rootSF_gear >= req.rootSFTarget && calc.flankSF >= req.flankSFTarget;
+}
+function worstFactor(calc, req) {
+  const candidates = [
+    { name: "Root safety factor (pinion)", value: calc.rootSF_pinion, target: req.rootSFTarget },
+    { name: "Root safety factor (gear)", value: calc.rootSF_gear, target: req.rootSFTarget },
+    { name: "Flank safety factor", value: calc.flankSF, target: req.flankSFTarget },
+  ];
+  return candidates.reduce((worst, c) => (c.value - c.target) < (worst.value - worst.target) ? c : worst);
+}
+
+/* ============ Tabs ============ */
+const tabButtons = document.querySelectorAll(".tab-btn");
+tabButtons.forEach(btn => btn.addEventListener("click", () => {
+  if (btn.disabled) return;
+  showTab(btn.dataset.tab);
+}));
+function showTab(name) {
+  tabButtons.forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.getElementById("view-" + name).classList.add("active");
+}
+
+/* ============ Settings disclosure ============ */
+const settingsToggle = document.getElementById("settingsToggle");
+const settingsBox = document.getElementById("settingsBox");
+settingsToggle.addEventListener("click", () => settingsBox.classList.toggle("open"));
+const helpToggle = document.getElementById("helpToggle");
+const helpBox = document.getElementById("helpBox");
+helpToggle.addEventListener("click", () => helpBox.classList.toggle("open"));
+const webhookInput = document.getElementById("webhook-url");
+const decisionWebhookInput = document.getElementById("decision-webhook-url");
+
+/* ============ Live / Demo mode toggle ============ */
+let manualDemo = false;      // user explicitly forced demo mode
+const demoToggleBtn = document.getElementById("demoToggleBtn");
+const liveFailBanner = document.getElementById("liveFailBanner");
+
+function isLiveMode() {
+  return !manualDemo && webhookInput.value.trim().length > 0;
+}
+function updateModePill() {
+  const pill = document.getElementById("modePill");
+  if (isLiveMode()) {
+    pill.innerHTML = '<span class="dot"></span>Live workflow';
+    demoToggleBtn.textContent = "Switch to demo mode";
+  } else {
+    pill.innerHTML = '<span class="dot"></span>Demo mode';
+    demoToggleBtn.textContent = "Switch to live mode";
+  }
+}
+webhookInput.addEventListener("input", updateModePill);
+demoToggleBtn.addEventListener("click", () => {
+  manualDemo = !manualDemo;
+  updateModePill();
+});
+updateModePill();
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+/* A live call failed after retrying — carries the original request so the user can retry or opt into demo mode. */
+class LiveCallFailedError extends Error {
+  constructor(req, cause) {
+    super(cause && cause.message ? cause.message : "Live call failed");
+    this.req = req;
+    this.cause = cause;
+  }
+}
+
+/* Shows an unmissable, persistent failure state (not a silent fallback) with explicit choices. */
+function showLiveFailure(err, onRetry, onDemo) {
+  liveFailBanner.style.display = "block";
+  liveFailBanner.innerHTML = `
+    <p class="note" style="color:#a92e2e; margin:0 0 8px;">⚠ Couldn't reach the live n8n workflow (${escapeHtml(err.cause ? err.cause.message : err.message)}) after retrying. No result was generated — nothing shown anywhere is simulated unless clearly marked.</p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <button class="btn secondary" id="liveRetryBtn" style="padding:7px 14px; font-size:13px;">Try again</button>
+      <button class="settings-toggle" id="liveDemoBtn" style="margin:0;">Run this one in demo mode instead</button>
+    </div>`;
+  document.getElementById("liveRetryBtn").addEventListener("click", () => { liveFailBanner.style.display = "none"; onRetry(); });
+  document.getElementById("liveDemoBtn").addEventListener("click", () => { liveFailBanner.style.display = "none"; onDemo(); });
+}
+
+/* ============ Generate flow ============ */
+const generateBtn = document.getElementById("generateBtn");
+const progressCard = document.getElementById("progressCard");
+const progressSteps = document.querySelectorAll("#progressSteps li");
+const resultTabBtn = document.getElementById("resultTabBtn");
+const historyRuns = [];
+
+generateBtn.addEventListener("click", () => {
+  const req = {
+    ratio: parseFloat(document.getElementById("in-ratio").value),
+    torque: parseFloat(document.getElementById("in-torque").value),
+    rootSFTarget: parseFloat(document.getElementById("in-rootsf").value),
+    flankSFTarget: parseFloat(document.getElementById("in-flanksf").value),
+  };
+  if ([req.ratio, req.torque, req.rootSFTarget, req.flankSFTarget].some(v => isNaN(v))) {
+    alert("Please fill in all four fields with numbers.");
+    return;
+  }
+  if (req.torque <= 0 || req.ratio <= 0) {
+    alert("Ratio and input torque must be greater than zero.");
+    return;
+  }
+  runAndRender(req, {
+    button: generateBtn,
+    onResult: (result) => {
+      historyRuns.unshift(result);
+      persistHistory();
+      renderResult(result);
+      renderHistory();
+      showTab("result");
+    },
+  });
+});
+
+/* Runs a requirement through generateFromRequirement and handles the outcome:
+   success renders normally; a live failure shows an unmissable retry/demo choice
+   instead of silently substituting fake data. */
+async function runAndRender(req, opts) {
+  const { button, onResult, forceDemo, finallyFn } = opts;
+  try {
+    const result = await generateFromRequirement(req, { button, forceDemo });
+    if (finallyFn) finallyFn();
+    onResult(result);
+  } catch (err) {
+    if (finallyFn) finallyFn();
+    if (button) button.disabled = false;
+    if (err instanceof LiveCallFailedError) {
+      showLiveFailure(
+        err,
+        () => runAndRender(req, opts),
+        () => runAndRender(req, { ...opts, forceDemo: true })
+      );
+    } else {
+      alert("Something went wrong: " + err.message);
+    }
+  }
+}
+
+/* Shared pipeline entry point — used by the main form and by the "try a tweak" buttons.
+   opts.button: the button to disable/re-enable while this run is in flight.
+   opts.forceDemo: run the local simulator explicitly (user's own choice, always tagged). */
+async function generateFromRequirement(req, opts = {}) {
+  const { button, forceDemo } = opts;
+  if (button) button.disabled = true;
+  progressCard.style.display = "block";
+  resetProgress();
+  liveFailBanner.style.display = "none";
+
+  const webhookUrl = webhookInput.value.trim();
+  let result;
+  try {
+    if (forceDemo || !isLiveMode()) {
+      result = await runDemoWithProgress(req);
+      result.simulated = true;
+    } else {
+      for (let i = 0; i < progressSteps.length; i++) animateStep(i); // don't await — real call runs in parallel
+      try {
+        result = await runLiveWebhook(webhookUrl, req);
+      } catch (firstErr) {
+        console.warn("Live webhook call failed, retrying once:", firstErr);
+        result = await runLiveWebhook(webhookUrl, req);
+      }
+      progressSteps.forEach(li => li.classList.add("done"));
+    }
+  } catch (err) {
+    if (button) button.disabled = false;
+    progressCard.style.display = "none";
+    throw new LiveCallFailedError(req, err);
+  }
+
+  if (button) button.disabled = false;
+  progressCard.style.display = "none";
+  resultTabBtn.disabled = false;
+  return result;
+}
+
+/* ============ Tweak (refine) flow ============ */
+const TWEAKS = [
+  {
+    key: "safer",
+    label: "🔒 Require a higher safety margin",
+    hint: "Reruns with both safety targets raised — a more conservative design.",
+    apply: (req) => ({ ...req, rootSFTarget: round2(req.rootSFTarget + 0.1), flankSFTarget: round2(req.flankSFTarget + 0.1) }),
+  },
+  {
+    key: "leaner",
+    label: "⚖️ Try a leaner design",
+    hint: "Reruns with both safety targets relaxed slightly — smaller/lighter if it still clears the floor.",
+    apply: (req) => ({ ...req, rootSFTarget: Math.max(1.0, round2(req.rootSFTarget - 0.05)), flankSFTarget: Math.max(1.0, round2(req.flankSFTarget - 0.05)) }),
+  },
+  {
+    key: "ratio-up",
+    label: "📈 Try a slightly higher ratio",
+    hint: "Reruns with the desired ratio nudged up by 0.1.",
+    apply: (req) => ({ ...req, ratio: round2(req.ratio + 0.1) }),
+  },
+  {
+    key: "torque-headroom",
+    label: "🔧 Add torque headroom",
+    hint: "Reruns with 10% more input torque — useful if the motor might be upgraded later.",
+    apply: (req) => ({ ...req, torque: round1(req.torque * 1.1) }),
+  },
+];
+function round2(x){ return Math.round(x*100)/100; }
+
+function handleTweak(baseRun, tweak) {
+  const newReq = tweak.apply(baseRun.requirement);
+  const tweakBtns = document.querySelectorAll(".tweak-btn");
+  tweakBtns.forEach(b => b.disabled = true);
+  showTab("new"); // reuse the same progress card, visible under New Design
+  runAndRender(newReq, {
+    finallyFn: () => tweakBtns.forEach(b => b.disabled = false),
+    onResult: (result) => {
+      result.threadRootId = baseRun.threadRootId || baseRun.gpId;
+      result.previousGpId = baseRun.gpId;
+      result.roundLabel = tweak.label;
+      result.round = (baseRun.round || 1) + 1;
+      historyRuns.unshift(result);
+      persistHistory();
+      renderResult(result);
+      renderHistory();
+      showTab("result");
+    },
+  });
+}
+
+function resetProgress() {
+  progressSteps.forEach(li => li.classList.remove("done", "active"));
+}
+async function animateStep(i) {
+  if (i > 0) progressSteps[i - 1].classList.replace("active", "done");
+  if (i < progressSteps.length) progressSteps[i].classList.add("active");
+  await sleep(450);
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function runDemoWithProgress(req) {
+  for (let i = 0; i < progressSteps.length; i++) await animateStep(i);
+  progressSteps[progressSteps.length - 1].classList.replace("active", "done");
+  await sleep(200);
+  return runDemoPipeline(req);
+}
+
+async function runLiveWebhook(url, req) {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    let msg = "Webhook returned " + resp.status;
+    try {
+      const errBody = await resp.json();
+      if (errBody && errBody.error) msg = errBody.error;
+    } catch (_) { /* body wasn't JSON, keep the status-based message */ }
+    throw new Error(msg);
+  }
+  const data = await resp.json();
+  // Expect the webhook to return the same shape runDemoPipeline() produces.
+  if (data && data.calc && data.baseline) {
+    data.timestamp = new Date();
+    data.requirement = data.requirement || req;
+    if (!data.gpId) data.gpId = "GP" + String(nextGpNumber++).padStart(2, "0");
+    if (!data.approvalStatus) data.approvalStatus = "pending";
+    data.simulated = false;
+    return data;
+  }
+  throw new Error("Unexpected response shape from workflow");
+}
+
+/* ============ Decision (Approve / Reject) ============ */
+async function handleDecision(gpId, decision) {
+  const run = historyRuns.find(r => r.gpId === gpId);
+  if (!run || run.approvalStatus !== "pending") return;
+
+  const approveBtn = document.getElementById("approveBtn");
+  const rejectBtn = document.getElementById("rejectBtn");
+  if (approveBtn) approveBtn.disabled = true;
+  if (rejectBtn) rejectBtn.disabled = true;
+
+  const decisionUrl = decisionWebhookInput.value.trim();
+  if (decisionUrl) {
+    try {
+      await fetch(decisionUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gpId, decision }),
+      });
+    } catch (err) {
+      console.warn("Decision webhook call failed, updating locally anyway:", err);
+    }
+  } else {
+    await sleep(400); // demo-mode feedback delay
+  }
+
+  run.approvalStatus = decision;
+  persistHistory();
+  renderResult(run);
+  renderHistory();
+}
+
+/* ============ Render result ============ */
+function renderResult(r) {
+  const passed = r.done;
+  const card = document.getElementById("resultCard");
+  const worstRoot = Math.min(r.calc.rootSF_pinion, r.calc.rootSF_gear);
+
+  card.innerHTML = `
+    <div class="result-header">
+      <h2>Recommended design — ${r.gpId}${r.projectName ? ` <span style="color:var(--text-secondary); font-weight:600;">· ${escapeHtml(r.projectName)}</span>` : ""} <button class="settings-toggle" id="renameBtn" style="margin:0 0 0 6px; font-size:12px;">${r.projectName ? "rename" : "name this design"}</button></h2>
+      <div class="badge-row">
+        ${r.simulated ? `<span class="status-badge pending" style="background:#f1e9fb; color:#5b3aa8;"><span class="dot" style="background:#5b3aa8;"></span>🧪 Simulated (demo)</span>` : ""}
+        <span class="status-badge ${passed ? 'pass' : 'fail'}"><span class="dot"></span>${passed ? 'Meets safety targets' : 'Needs engineering review'}</span>
+        ${approvalBadge(r.approvalStatus)}
+      </div>
+    </div>
+    ${r.previousGpId ? `<p class="thread-note">Round ${r.round} — ${r.roundLabel}, refining <a href="#" data-jump="${r.previousGpId}" class="thread-link">${r.previousGpId}</a></p>` : ""}
+    <p class="baseline-note">Started from <b>${r.baseline.GP_ID}</b> as the closest historical match (ratio ${r.baseline.ratio}, ${r.baseline.inputTorqueNm} Nm) — converged in <b>${r.iteration}</b> iteration${r.iteration>1?'s':''}.</p>
+
+    <div class="param-grid">
+      <div class="param-tile"><div class="label">Module</div><div class="value">${r.params.module}</div></div>
+      <div class="param-tile"><div class="label">Teeth (Zp / Zg)</div><div class="value">${r.params.Zp} / ${r.params.Zg}</div></div>
+      <div class="param-tile"><div class="label">Face width</div><div class="value">${r.params.faceWidth} mm</div></div>
+      <div class="param-tile"><div class="label">Ratio achieved</div><div class="value">${r.calc.ratio}</div></div>
+    </div>
+
+    ${meter("Root safety factor — pinion", r.calc.rootSF_pinion, r.requirement.rootSFTarget)}
+    ${meter("Root safety factor — gear", r.calc.rootSF_gear, r.requirement.rootSFTarget)}
+    ${meter("Flank safety factor", r.calc.flankSF, r.requirement.flankSFTarget)}
+
+    <div class="report-section">
+      <p class="section-title">Why this design</p>
+      ${similarityNote(r)}
+      <div class="reasoning-box" style="margin-top:10px;">
+        ${passed
+          ? `The final design clears every safety target you set (root SF ≥ ${r.requirement.rootSFTarget}, flank SF ≥ ${r.requirement.flankSFTarget}).`
+          : `It still falls short of one or more of your safety targets after ${r.iteration} iteration${r.iteration>1?'s':''} — worth a manual look before you approve it.`}
+      </div>
+    </div>
+
+    <div class="report-section">
+      <p class="section-title">Decision trail</p>
+      ${decisionTrail(r)}
+    </div>
+
+    <div class="report-section">
+      <p class="section-title">Baseline vs. final design</p>
+      ${compareTable(r)}
+    </div>
+
+    <div class="action-row no-print">
+      <button class="btn secondary" id="exportBtn">⤓ Export report (PDF)</button>
+      <button class="btn secondary" id="csvBtn">⤓ Export spec (CSV)</button>
+    </div>
+
+    <div class="report-section no-print">
+      <p class="section-title">Try a tweak</p>
+      <p class="hint" style="margin-bottom:12px;">Not quite right? Rerun this requirement with one change and compare the new result — each tweak keeps a link back to where it came from.</p>
+      <div class="tweak-row">
+        ${TWEAKS.map(t => `<button class="btn secondary tweak-btn" data-tweak="${t.key}" title="${t.hint}">${t.label}</button>`).join("")}
+      </div>
+    </div>
+
+    ${decisionBlock(r)}
+  `;
+
+  document.getElementById("exportBtn").addEventListener("click", () => window.print());
+  document.getElementById("csvBtn").addEventListener("click", () => exportCSV(r));
+  document.getElementById("renameBtn").addEventListener("click", () => {
+    const name = prompt("Name this design (leave blank to clear):", r.projectName || "");
+    if (name === null) return;
+    r.projectName = name.trim();
+    persistHistory();
+    renderResult(r);
+    renderHistory();
+  });
+
+  card.querySelectorAll(".tweak-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tweak = TWEAKS.find(t => t.key === btn.dataset.tweak);
+      if (tweak) handleTweak(r, tweak);
+    });
+  });
+
+  const jumpLink = card.querySelector(".thread-link");
+  if (jumpLink) {
+    jumpLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      const prev = historyRuns.find(run => run.gpId === jumpLink.dataset.jump);
+      if (prev) { renderResult(prev); showTab("result"); }
+    });
+  }
+
+  if (r.approvalStatus === "pending") {
+    document.getElementById("approveBtn").addEventListener("click", () => handleDecision(r.gpId, "approved"));
+    document.getElementById("rejectBtn").addEventListener("click", () => handleDecision(r.gpId, "rejected"));
+  }
+}
+
+/* ---- Report helpers ---- */
+
+function similarityNote(r) {
+  const ratioDelta = Math.abs(r.baseline.ratio - r.requirement.ratio);
+  const ratioPct = r.requirement.ratio ? Math.abs(ratioDelta / r.requirement.ratio * 100) : 0;
+  const torqueDelta = Math.abs(r.baseline.inputTorqueNm - r.requirement.torque);
+  const torquePct = r.requirement.torque ? Math.abs(torqueDelta / r.requirement.torque * 100) : 0;
+  return `
+    <div class="similarity-note">
+      <span class="sim-item">Matched on ratio + torque distance to every approved design — closest was <b>${r.baseline.GP_ID}</b></span>
+      <span class="sim-item">Ratio gap: <b>${ratioPct.toFixed(0)}%</b> (${r.baseline.ratio} vs ${r.requirement.ratio} requested)</span>
+      <span class="sim-item">Torque gap: <b>${torquePct.toFixed(0)}%</b> (${r.baseline.inputTorqueNm} vs ${r.requirement.torque} Nm requested)</span>
+    </div>`;
+}
+
+function decisionTrail(r) {
+  const steps = [
+    { label: "Starting point", text: `Matched requirement to <b>${r.baseline.GP_ID}</b> as the closest approved historical design.`, cls: "is-start", icon: "•" },
+    ...r.trace.map((t, i) => ({
+      label: i === r.trace.length - 1 ? "Final result" : `Iteration ${t.n}`,
+      text: t.text,
+      cls: i === r.trace.length - 1 ? "is-final" : "",
+      icon: i === r.trace.length - 1 ? "✓" : String(t.n),
+    })),
+  ];
+  return `
+    <div class="decision-trail">
+      ${steps.map(s => `
+        <div class="trail-step ${s.cls}">
+          <div class="trail-dot">${s.icon}</div>
+          <div class="trail-label">${s.label}</div>
+          <div class="trail-text">${s.text}</div>
+        </div>`).join("")}
+    </div>`;
+}
+
+function compareTable(r) {
+  // Live-mode baselines only carry {GP_ID, ratio, inputTorqueNm}; backfill the rest
+  // from the known historical dataset when the baseline is one of the original GPs.
+  const known = findHistoricalById(r.baseline.GP_ID);
+  const baseModule = r.baseline.module ?? known?.module;
+  const baseZp = r.baseline.Zp ?? known?.Zp;
+  const baseZg = r.baseline.Zg ?? known?.Zg;
+  const baseFaceWidth = r.baseline.faceWidth ?? known?.faceWidth;
+  const baseCalc = (baseModule != null && baseZp != null && baseZg != null && baseFaceWidth != null)
+    ? calcSafety(baseModule, baseZp, baseZg, baseFaceWidth, r.baseline.inputTorqueNm)
+    : null;
+
+  const rows = [
+    { label: "Module", base: baseModule, final: r.params.module },
+    { label: "Teeth (Zp / Zg)", base: (baseZp != null && baseZg != null) ? `${baseZp} / ${baseZg}` : null, final: `${r.params.Zp} / ${r.params.Zg}` },
+    { label: "Face width (mm)", base: baseFaceWidth, final: r.params.faceWidth },
+    { label: "Ratio", base: r.baseline.ratio, final: r.calc.ratio },
+    { label: "Root SF — pinion", base: baseCalc?.rootSF_pinion, final: r.calc.rootSF_pinion },
+    { label: "Root SF — gear", base: baseCalc?.rootSF_gear, final: r.calc.rootSF_gear },
+    { label: "Flank SF", base: baseCalc?.flankSF, final: r.calc.flankSF },
+  ];
+
+  const cell = (v, changed) => v == null
+    ? `<td class="na">—</td>`
+    : `<td class="${changed ? 'changed' : ''}">${v}</td>`;
+
+  return `
+    <table class="compare-table">
+      <thead>
+        <tr><th>Parameter</th><th>${r.baseline.GP_ID} (starting point)</th><th>${r.gpId} (final)</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map(row => {
+          const changed = row.base != null && String(row.base) !== String(row.final);
+          return `<tr><td class="row-label">${row.label}</td>${cell(row.base, false)}${cell(row.final, changed)}</tr>`;
+        }).join("")}
+      </tbody>
+    </table>`;
+}
+
+function approvalBadge(status) {
+  if (status === "approved") return `<span class="status-badge pass"><span class="dot"></span>Approved</span>`;
+  if (status === "rejected") return `<span class="status-badge fail"><span class="dot"></span>Rejected</span>`;
+  return `<span class="status-badge pending"><span class="dot"></span>Pending your review</span>`;
+}
+
+function decisionBlock(r) {
+  if (r.approvalStatus === "pending") {
+    return `
+      <div class="decision-block">
+        <p class="decision-heading">Your call</p>
+        <p class="decision-hint">This design is saved as <b>Pending</b> in the historical database right now. Approve it to fold it into future baseline matching, or reject it to leave it out.</p>
+        <div class="decision-row">
+          <button class="btn approve" id="approveBtn">✓ Approve design</button>
+          <button class="btn reject" id="rejectBtn">✕ Reject design</button>
+        </div>
+      </div>`;
+  }
+  const approved = r.approvalStatus === "approved";
+  return `
+    <div class="decision-block">
+      <div class="decision-outcome ${approved ? 'is-approved' : 'is-rejected'}">
+        <span class="icon">${approved ? '✓' : '✕'}</span>
+        <span>${approved
+          ? `Approved — ${r.gpId} is now part of the historical database and will be used as a baseline for future designs.`
+          : `Rejected — ${r.gpId} is kept on file for the record but won't be used as a future baseline.`}</span>
+      </div>
+    </div>`;
+}
+
+function exportCSV(r) {
+  const known = findHistoricalById(r.baseline.GP_ID);
+  const rows = [
+    ["Field", "Value"],
+    ["GP_ID", r.gpId],
+    ["Project name", r.projectName || ""],
+    ["Simulated", r.simulated ? "yes" : "no"],
+    ["Ratio requested", r.requirement.ratio],
+    ["Torque requested (Nm)", r.requirement.torque],
+    ["Root SF target", r.requirement.rootSFTarget],
+    ["Flank SF target", r.requirement.flankSFTarget],
+    ["Baseline GP_ID", r.baseline.GP_ID],
+    ["Module", r.params.module],
+    ["Zp", r.params.Zp],
+    ["Zg", r.params.Zg],
+    ["Face width (mm)", r.params.faceWidth],
+    ["Ratio achieved", r.calc.ratio],
+    ["Root SF pinion", r.calc.rootSF_pinion],
+    ["Root SF gear", r.calc.rootSF_gear],
+    ["Flank SF", r.calc.flankSF],
+    ["Meets targets", r.done ? "yes" : "no"],
+    ["Approval status", r.approvalStatus],
+    ["Generated", formatDate(r.timestamp)],
+  ];
+  const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${r.gpId}-spec.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ============ Local persistence (this browser only) ============ */
+const STORAGE_KEY = "gearDashboard.history.v1";
+function persistHistory() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nextGpNumber, runs: historyRuns }));
+  } catch (e) { console.warn("Could not save history locally:", e); }
+}
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.nextGpNumber) nextGpNumber = Math.max(nextGpNumber, data.nextGpNumber);
+    if (Array.isArray(data.runs)) {
+      data.runs.forEach(r => { r.timestamp = new Date(r.timestamp); });
+      historyRuns.push(...data.runs);
+    }
+  } catch (e) { console.warn("Could not load saved history:", e); }
+}
+
+function meter(name, value, target) {
+  const ok = value >= target;
+  const pct = Math.max(6, Math.min(100, (value / (target * 1.6)) * 100));
+  const targetPct = Math.min(100, (target / (target * 1.6)) * 100);
+  return `
+    <div class="meter-block">
+      <div class="meter-top"><span class="name">${name}</span><span class="figs">${value.toFixed(2)} <span style="color:var(--text-muted)">/ target ${target.toFixed(2)}</span></span></div>
+      <div class="meter-track">
+        <div class="meter-fill ${ok ? 'good' : 'critical'}" style="width:${pct}%"></div>
+        <div class="meter-target" style="left:${targetPct}%"></div>
+      </div>
+    </div>`;
+}
+
+/* ============ Render history ============ */
+const selectedForCompare = new Set();
+const compareBtn = document.getElementById("compareBtn");
+
+function renderHistory() {
+  const list = document.getElementById("historyList");
+  // Drop selections for runs that no longer exist (shouldn't normally happen, but keeps state honest).
+  const liveIds = new Set(historyRuns.map(r => r.gpId));
+  [...selectedForCompare].forEach(id => { if (!liveIds.has(id)) selectedForCompare.delete(id); });
+
+  if (historyRuns.length === 0) {
+    list.innerHTML = `<div class="empty-state">No runs yet — generate a design to see it appear here.</div>`;
+    updateCompareBtn();
+    return;
+  }
+  list.innerHTML = historyRuns.map(r => `
+    <div class="history-row">
+      <input type="checkbox" class="compare-check" data-gpid="${r.gpId}" ${selectedForCompare.has(r.gpId) ? "checked" : ""} aria-label="Select ${r.gpId} for comparison">
+      <div class="date">${formatDate(r.timestamp)}</div>
+      <div class="summary"><b>${r.gpId}</b>${r.projectName ? ` <span style="color:var(--text-secondary);">· ${escapeHtml(r.projectName)}</span>` : ""} — ratio ${r.requirement.ratio}, ${r.requirement.torque} Nm ${r.done ? '' : '<span style="color:var(--critical)">(needs review)</span>'} ${r.simulated ? '<span style="color:#5b3aa8;">🧪 simulated</span>' : ''}</div>
+      <div class="links"><a href="#" data-view="${r.gpId}">View</a></div>
+      <span class="status-badge ${r.done ? 'pass' : 'fail'}"><span class="dot"></span>${r.done ? 'Pass' : 'Review'}</span>
+      ${approvalBadge(r.approvalStatus)}
+    </div>
+  `).join("");
+
+  list.querySelectorAll("a[data-view]").forEach(a => {
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      const run = historyRuns.find(r => r.gpId === a.dataset.view);
+      if (run) { renderResult(run); showTab("result"); }
+    });
+  });
+  list.querySelectorAll(".compare-check").forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) {
+        if (selectedForCompare.size >= 3) { cb.checked = false; alert("You can compare up to 3 designs at a time."); return; }
+        selectedForCompare.add(cb.dataset.gpid);
+      } else {
+        selectedForCompare.delete(cb.dataset.gpid);
+      }
+      updateCompareBtn();
+    });
+  });
+  updateCompareBtn();
+}
+
+function updateCompareBtn() {
+  compareBtn.disabled = selectedForCompare.size < 2;
+  compareBtn.textContent = selectedForCompare.size >= 2 ? `Compare selected (${selectedForCompare.size})` : "Compare selected";
+}
+
+compareBtn.addEventListener("click", () => {
+  const runs = historyRuns.filter(r => selectedForCompare.has(r.gpId));
+  document.getElementById("compareArea").innerHTML = compareRuns(runs);
+});
+
+function compareRuns(runs) {
+  const rows = [
+    { label: "Project name", get: r => r.projectName || "—" },
+    { label: "Simulated", get: r => r.simulated ? "yes" : "no" },
+    { label: "Ratio requested", get: r => r.requirement.ratio },
+    { label: "Torque requested (Nm)", get: r => r.requirement.torque },
+    { label: "Baseline", get: r => r.baseline.GP_ID },
+    { label: "Module", get: r => r.params.module },
+    { label: "Teeth (Zp / Zg)", get: r => `${r.params.Zp} / ${r.params.Zg}` },
+    { label: "Face width (mm)", get: r => r.params.faceWidth },
+    { label: "Ratio achieved", get: r => r.calc.ratio },
+    { label: "Root SF — pinion", get: r => r.calc.rootSF_pinion },
+    { label: "Root SF — gear", get: r => r.calc.rootSF_gear },
+    { label: "Flank SF", get: r => r.calc.flankSF },
+    { label: "Status", get: r => r.done ? "Pass" : "Needs review" },
+    { label: "Approval", get: r => r.approvalStatus },
+  ];
+  return `
+    <div class="report-section">
+      <p class="section-title">Comparing ${runs.map(r => r.gpId).join(", ")}</p>
+      <div style="overflow-x:auto;">
+        <table class="compare-table">
+          <thead><tr><th>Parameter</th>${runs.map(r => `<th>${r.gpId}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${rows.map(row => `<tr><td class="row-label">${row.label}</td>${runs.map(r => `<td>${row.get(r)}</td>`).join("")}</tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function formatDate(d) {
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+loadHistory();
+renderHistory();
+</script>
+</body>
+</html>
