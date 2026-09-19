@@ -361,6 +361,8 @@
 
     <div class="card" id="progressCard" style="display:none;">
       <h2>Running…</h2>
+      <p class="hint" id="progressElapsed" style="margin:0 0 6px;">0s elapsed</p>
+      <p class="hint" style="margin:0 0 18px;">Usually finishes within 2–3 minutes. The agent tries up to 3 candidate designs (1 initial + up to 2 retries) and returns the best one it finds.</p>
       <ul class="progress-steps" id="progressSteps">
         <li data-step="0"><span class="marker"></span>Looking up similar past designs</li>
         <li data-step="1"><span class="marker"></span>AI selecting closest baseline</li>
@@ -368,6 +370,10 @@
         <li data-step="3"><span class="marker"></span>AI reviewing the result</li>
         <li data-step="4"><span class="marker"></span>Finalizing recommendation</li>
       </ul>
+      <div class="btn-row">
+        <button class="btn secondary" id="cancelRunBtn">Stop waiting</button>
+      </div>
+      <p class="hint" style="margin:10px 0 0;">"Stop waiting" only stops this page from waiting on a live run — it can't cancel the workflow itself once started on the server.</p>
     </div>
   </section>
 
@@ -474,11 +480,20 @@ function runDemoPipeline(req) {
   }
 
   const gpId = "GP" + String(nextGpNumber++).padStart(2, "0");
+  const finalWorst = worstFactor(calc, req);
+  const retryExhausted = !done && iteration >= 5;
   return {
     requirement: req,
     baseline, params, calc, trace, done, iteration, gpId,
     approvalStatus: "pending",
     timestamp: new Date(),
+    reasoning: done
+      ? `The final design clears every safety target after ${iteration} iteration${iteration>1?'s':''}.`
+      : `Still short on ${finalWorst.name.toLowerCase()} (${finalWorst.value} vs target ${finalWorst.target}) after ${iteration} iteration${iteration>1?'s':''}.`,
+    limitingFactor: done ? null : finalWorst.name,
+    retryAttempt: iteration - 1,
+    retryExhausted,
+    retryStopReason: retryExhausted ? "demo iteration cap reached" : null,
   };
 }
 
@@ -554,11 +569,33 @@ class LiveCallFailedError extends Error {
   }
 }
 
+/* The user clicked "Stop waiting" — this only stops the page from waiting, not the server-side run. */
+class RunCancelledError extends Error {
+  constructor() { super("Cancelled by user"); }
+}
+
+/* Turns a raw fetch/HTTP error into a plain-language explanation, distinguishing
+   a workflow timeout from a network problem from a generic server error. */
+function describeLiveError(err) {
+  const raw = (err && err.cause && err.cause.message) ? err.cause.message : (err ? err.message : "Unknown error");
+  const lower = String(raw).toLowerCase();
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return `The workflow hit its own internal timeout before it finished (${raw}). This can happen on an unusually hard design that needed more retries than it had time for. Try again — most runs finish in 2–3 minutes.`;
+  }
+  if (/webhook returned 50[234]/.test(lower)) {
+    return `The server took too long or dropped the connection (${raw}). This usually means the workflow was still running when the gateway gave up waiting. Try again.`;
+  }
+  if (lower.includes("failed to fetch") || lower.includes("networkerror") || lower.includes("load failed")) {
+    return `Couldn't reach the n8n workflow at all — a network error (${raw}). Check that the webhook URL is correct and the n8n instance is reachable.`;
+  }
+  return raw;
+}
+
 /* Shows an unmissable, persistent failure state (not a silent fallback) with explicit choices. */
 function showLiveFailure(err, onRetry, onDemo) {
   liveFailBanner.style.display = "block";
   liveFailBanner.innerHTML = `
-    <p class="note" style="color:#a92e2e; margin:0 0 8px;">⚠ Couldn't reach the live n8n workflow (${escapeHtml(err.cause ? err.cause.message : err.message)}) after retrying. No result was generated — nothing shown anywhere is simulated unless clearly marked.</p>
+    <p class="note" style="color:#a92e2e; margin:0 0 8px;">⚠ ${escapeHtml(describeLiveError(err))} No result was generated — nothing shown anywhere is simulated unless clearly marked.</p>
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
       <button class="btn secondary" id="liveRetryBtn" style="padding:7px 14px; font-size:13px;">Try again</button>
       <button class="settings-toggle" id="liveDemoBtn" style="margin:0;">Run this one in demo mode instead</button>
@@ -571,8 +608,36 @@ function showLiveFailure(err, onRetry, onDemo) {
 const generateBtn = document.getElementById("generateBtn");
 const progressCard = document.getElementById("progressCard");
 const progressSteps = document.querySelectorAll("#progressSteps li");
+const progressElapsed = document.getElementById("progressElapsed");
+const cancelRunBtn = document.getElementById("cancelRunBtn");
 const resultTabBtn = document.getElementById("resultTabBtn");
 const historyRuns = [];
+
+/* ---- Elapsed-time ticker shown while a run is in flight (visibility improvement #1) ---- */
+let elapsedTimerId = null;
+let elapsedStartedAt = null;
+function startElapsedTicker() {
+  elapsedStartedAt = Date.now();
+  updateElapsedText();
+  stopElapsedTicker();
+  elapsedTimerId = setInterval(updateElapsedText, 1000);
+}
+function stopElapsedTicker() {
+  if (elapsedTimerId) { clearInterval(elapsedTimerId); elapsedTimerId = null; }
+}
+function updateElapsedText() {
+  if (!progressElapsed || elapsedStartedAt == null) return;
+  const secs = Math.max(0, Math.floor((Date.now() - elapsedStartedAt) / 1000));
+  progressElapsed.textContent = secs > 170
+    ? `${secs}s elapsed — this is taking longer than most runs, but still working…`
+    : `${secs}s elapsed`;
+}
+
+/* ---- Cancel control (visibility improvement #2): aborts THIS PAGE's wait only. ---- */
+let currentAbortController = null;
+cancelRunBtn.addEventListener("click", () => {
+  if (currentAbortController) currentAbortController.abort();
+});
 
 generateBtn.addEventListener("click", () => {
   const req = {
@@ -613,6 +678,10 @@ async function runAndRender(req, opts) {
   } catch (err) {
     if (finallyFn) finallyFn();
     if (button) button.disabled = false;
+    if (err instanceof RunCancelledError) {
+      // User-initiated stop — the progress card is already hidden; nothing else to show.
+      return;
+    }
     if (err instanceof LiveCallFailedError) {
       showLiveFailure(
         err,
@@ -634,31 +703,38 @@ async function generateFromRequirement(req, opts = {}) {
   progressCard.style.display = "block";
   resetProgress();
   liveFailBanner.style.display = "none";
+  startElapsedTicker();
+  currentAbortController = new AbortController();
+  cancelRunBtn.disabled = false;
 
   const webhookUrl = webhookInput.value.trim();
   let result;
   try {
     if (forceDemo || !isLiveMode()) {
-      result = await runDemoWithProgress(req);
+      result = await runDemoWithProgress(req, currentAbortController.signal);
       result.simulated = true;
     } else {
       for (let i = 0; i < progressSteps.length; i++) animateStep(i); // don't await — real call runs in parallel
       try {
-        result = await runLiveWebhook(webhookUrl, req);
+        result = await runLiveWebhook(webhookUrl, req, currentAbortController.signal);
       } catch (firstErr) {
+        if (firstErr.name === "AbortError") throw firstErr;
         console.warn("Live webhook call failed, retrying once:", firstErr);
-        result = await runLiveWebhook(webhookUrl, req);
+        result = await runLiveWebhook(webhookUrl, req, currentAbortController.signal);
       }
       progressSteps.forEach(li => li.classList.add("done"));
     }
   } catch (err) {
     if (button) button.disabled = false;
     progressCard.style.display = "none";
+    stopElapsedTicker();
+    if (err.name === "AbortError") throw new RunCancelledError();
     throw new LiveCallFailedError(req, err);
   }
 
   if (button) button.disabled = false;
   progressCard.style.display = "none";
+  stopElapsedTicker();
   resultTabBtn.disabled = false;
   return result;
 }
@@ -723,18 +799,31 @@ async function animateStep(i) {
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function runDemoWithProgress(req) {
-  for (let i = 0; i < progressSteps.length; i++) await animateStep(i);
+function throwIfAborted(signal) {
+  if (signal && signal.aborted) {
+    const e = new Error("Aborted");
+    e.name = "AbortError";
+    throw e;
+  }
+}
+
+async function runDemoWithProgress(req, signal) {
+  for (let i = 0; i < progressSteps.length; i++) {
+    throwIfAborted(signal);
+    await animateStep(i);
+  }
+  throwIfAborted(signal);
   progressSteps[progressSteps.length - 1].classList.replace("active", "done");
   await sleep(200);
   return runDemoPipeline(req);
 }
 
-async function runLiveWebhook(url, req) {
+async function runLiveWebhook(url, req, signal) {
   const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
+    signal,
   });
   if (!resp.ok) {
     let msg = "Webhook returned " + resp.status;
@@ -800,6 +889,7 @@ function renderResult(r) {
       <div class="badge-row">
         ${r.simulated ? `<span class="status-badge pending" style="background:#f1e9fb; color:#5b3aa8;"><span class="dot" style="background:#5b3aa8;"></span>🧪 Simulated (demo)</span>` : ""}
         <span class="status-badge ${passed ? 'pass' : 'fail'}"><span class="dot"></span>${passed ? 'Meets safety targets' : 'Needs engineering review'}</span>
+        ${(r.retryAttempt && r.retryAttempt > 0) ? `<span class="status-badge pending" style="background:#fff3e0; color:#a15c00;"><span class="dot" style="background:#a15c00;"></span>Retried ${r.retryAttempt}×</span>` : ""}
         ${approvalBadge(r.approvalStatus)}
       </div>
     </div>
@@ -822,8 +912,10 @@ function renderResult(r) {
       ${similarityNote(r)}
       <div class="reasoning-box" style="margin-top:10px;">
         ${passed
-          ? `The final design clears every safety target you set (root SF ≥ ${r.requirement.rootSFTarget}, flank SF ≥ ${r.requirement.flankSFTarget}).`
-          : `It still falls short of one or more of your safety targets after ${r.iteration} iteration${r.iteration>1?'s':''} — worth a manual look before you approve it.`}
+          ? (r.reasoning ? escapeHtml(r.reasoning) : `The final design clears every safety target you set (root SF ≥ ${r.requirement.rootSFTarget}, flank SF ≥ ${r.requirement.flankSFTarget}).`)
+          : `<b>${r.limitingFactor ? `Still short on ${escapeHtml(r.limitingFactor)}.` : "Still short of one or more safety targets."}</b> ${r.reasoning ? escapeHtml(r.reasoning) + " " : ""}${r.retryExhausted
+              ? `The agent tried ${r.retryAttempt || 0} alternative${(r.retryAttempt||0) === 1 ? "" : "s"} from its shortlist${r.retryStopReason ? ` (stopped because: ${escapeHtml(r.retryStopReason)})` : ""} and none cleared your targets — worth a manual look before you approve it.`
+              : `It still falls short of one or more of your safety targets after ${r.iteration} iteration${r.iteration>1?'s':''} — worth a manual look before you approve it.`}`}
       </div>
     </div>
 
